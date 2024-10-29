@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>2.5D地图示例</title>
+    <script src="./openlayers/4.6.5/ol.js"></script>
+    <link rel="stylesheet" href="./openlayers/4.6.5/ol.css" type="text/css" />
+    <!-- <script src="http://api.tianditu.com/api?v=4.0&tk=badb8533f40a85113b57ccba926fceff"></script> -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .map-body {
+        width: 60%;
+        height: 80%;
+        position: relative;
+        border: 1px solid #000;
+
+        #map {
+          height: 100%;
+          width: 100%;
+        }
+
+        #cur-coordinate,
+        #cur-zoom {
+          position: absolute;
+          left: 0;
+          bottom: 0;
+          padding: 5px 10px;
+          font-weight: bold;
+          color: #000;
+        }
+
+        #cur-zoom {
+          bottom: 30px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="map-body">
+      <div id="map"></div>
+      <span id="cur-pos" ref="curPosRef"></span>
+      <span id="cur-zoom" ref="curZoomRef"></span>
+    </div>
+
+    <script>
+      const keys = [
+        //天地图key有每日访问限制，不够的话可以再弄几个
+        'badb8533f40a85113b57ccba926fceff',
+        '1ea952a9eb216d64108b667aa33f9b78',
+        '5e2932cacdcd4a54d9247c33bae97f7f',
+        'd3108ee2841c1d8b1409f5be463c0dbe',
+        '94c7616ba5b7f64e1be5acea360c8c83'
+      ];
+
+      let time = Date.now();
+      let yourkey = keys[time % 5]; //key的每日使用次数有限，几个换着用
+      const ApiIndex = time % 8; //天地图 t0-t7都可用,但频繁使用其中一个,会报418访问变慢
+
+      var map = new ol.Map({
+        target: 'map',
+        view: new ol.View({
+          // TODO 测试下载的瓦片，要修改 center
+          center: ol.proj.fromLonLat([116.397428, 39.90923]), // 北京天安门坐标116.397428, 39.90923
+          zoom: 4,
+          minZoom: 4,
+          maxZoom: 13
+        }),
+        layers: [
+          // // 1. 实时加载
+          // new ol.layer.Tile({
+          //   source: new ol.source.XYZ({
+          //     url: `http://t${ApiIndex}.tianditu.gov.cn/ibo_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ibo&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${yourkey}`
+          //     // url: `http://t${ApiIndex}.tianditu.com/DataServer?T=ibo_w&x={x}&y={y}&l={z}&tk=${yourkey}`
+          //   })
+          // }),
+
+          // 2. 加载离线数据
+          // 2.1 矢量底图
+          new ol.layer.Tile({
+            zIndex: 5,
+            source: new ol.source.XYZ({
+              tileLoadFunction: function (img, src) {
+                img.getImage().src = src;
+              },
+              tileUrlFunction: function (coordinate) {
+                let [z, x, y] = coordinate;
+                // 计算该层级的最大y值
+                const maxY = Math.pow(2, z) - 1;
+
+                // 如果y为负数或超出范围，进行修正
+                if (y < 0) {
+                  y = maxY + y + 1;
+                } else if (y > maxY) {
+                  y = y - maxY - 1;
+                }
+                return `../ibo/${z}/${x}/${y}.png`;
+                // return new URL(`../ibo/${z}/${x}/${y}.png`, '').href;
+              }
+            })
+          }),
+          // 2.2 底图矢量标注
+          new ol.layer.Tile({
+            zIndex: 6,
+            source: new ol.source.XYZ({
+              tileLoadFunction: function (img, src) {
+                img.getImage().src = src;
+              },
+              tileUrlFunction: function (coordinate) {
+                let [z, x, y] = coordinate;
+                return `../cva/${Math.abs(z)}/${x}/${Math.abs(y)}.png`;
+                // return new URL(`../cva/${z}/${x}/${y}.png`, '').href;
+              }
+            })
+          })
+          // new ol.layer.Vector({
+          //   className: 'basin',
+          //   zIndex: 4,
+          //   source: new ol.source.Vector()
+          // }),
+          // new ol.layer.Vector({
+          //   className: 'basin',
+          //   zIndex: 100,
+          //   source: new ol.source.Vector()
+          // })
+        ]
+      });
+
+      // 缩放事件
+      const curZoomRef = document.getElementById('cur-zoom');
+      map.on('moveend', function ({ map }) {
+        curZoomRef.textContent = map.getView().getZoom().toFixed(2);
+      });
+
+      // 获取点击点的 坐标
+      const curPosRef = document.getElementById('cur-pos');
+      map.on('singleclick', (e) => {
+        let coordinate = e.coordinate;
+        console.log('坐标', coordinate);
+        let lon_lat = ol.proj.toLonLat(coordinate).map((c) => c.toFixed(4));
+        curPosRef.textContent = lon_lat.toString();
+      });
+
+      // var tdtLayer = new ol.layer.Tile({
+      //   source: [
+      //     new ol.source.XYZ({
+      //       url: `http://t${ApiIndex}.tianditu.gov.cn/ibo_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ibo&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${yourkey}`
+      //       // url: `http://t${ApiIndex}.tianditu.com/DataServer?T=ibo_w&x={x}&y={y}&l={z}&tk=${yourkey}`
+      //     }),
+      //     new ol.source.XYZ({
+      //       url: `http://t${ApiIndex}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${yourkey}`
+      //     })
+      //   ],
+      //   opacity: 1.0
+      // });
+
+      // map.addLayer(tdtLayer);
+
+      // var imgLayer = new ol.layer.Tile({
+      //   source: new ol.source.XYZ({
+      //     url: `http://t${ApiIndex}.tianditu.com/DataServer?T=vec_c&x={x}&y={y}&l={z}&tk=${yourkey}`
+      //   }),
+      //   opacity: 0.8
+      // });
+      // map.addLayer(imgLayer);
+
+      // var statueLayer = new ol.layer.Vector({
+      //   source: new ol.source.Vector({
+      //     url: 'http://localhost:3000/tju_statue.geojson',
+      //     format: new ol.format.GeoJSON()
+      //   }),
+      //   style: function (feature) {
+      //     var styles = [
+      //       new ol.style.Style({
+      //         stroke: new ol.style.Stroke({
+      //           color: 'rgba(0, 0, 255, 0.6)',
+      //           width: 1
+      //         })
+      //       }),
+      //       new ol.style.Style({
+      //         geometry: feature.getGeometry(),
+      //         stroke: new ol.style.Stroke({
+      //           color: 'rgba(0, 0, 255, 0.6)',
+      //           width: 1
+      //         }),
+      //         fill: new ol.style.Fill({
+      //           color: 'rgba(255, 255, 255, 0.4)'
+      //         })
+      //       })
+      //     ];
+      //     var height = feature.get('height');
+      //     if (height !== undefined) {
+      //       var z = Math.min(height / 10, 10);
+      //       styles.push(
+      //         new ol.style.Style({
+      //           geometry: feature.getGeometry(),
+      //           stroke: new ol.style.Stroke({
+      //             color: 'rgba(0, 0, 0, 0.8)',
+      //             width: 2
+      //           }),
+      //           fill: new ol.style.Fill({
+      //             color: 'rgba(255, 0, 0, ' + z / 10 + ')'
+      //           }),
+      //           text: new ol.style.Text({
+      //             text: height + '米',
+      //             fill: new ol.style.Fill({
+      //               color: 'black'
+      //             }),
+      //             stroke: new ol.style.Stroke({
+      //               color: 'white',
+      //               width: 2
+      //             })
+      //           })
+      //         })
+      //       );
+      //     }
+      //     return styles;
+      //   }
+      // });
+
+      // map.addLayer(statueLayer);
+    </script>
+  </body>
+</html>
